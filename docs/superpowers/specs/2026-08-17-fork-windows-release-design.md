@@ -24,7 +24,7 @@
 
 | 항목 | 결정 | 근거 |
 |---|---|---|
-| 태그 규칙 | `v<base>-win.<N>` (예: `v0.1.20-win.1`) | upstream 태그와 충돌하지 않고, base가 올라가면 저절로 따라간다. semver prerelease라 goreleaser가 그대로 처리한다 |
+| 태그 규칙 | `v<base>-nightly.<YYYYMMDD>-<HHMM>` (예: `v0.1.20-nightly.20260817-0843`) | upstream 버전을 prefix로 삼아 어느 기반인지 드러내고, 뒤쪽 nightly 타임스탬프로 빌드를 구분한다. herdr 자신의 `0.8.0-nightly.2026.08.16-0612` 표기를 따른 것이다 |
 | 릴리스 트리거 | `windows-support` 브랜치 push마다 자동 | upstream의 현재 방식과 동일. 두 PC가 항상 최신을 받는다 |
 | 빌드 대상 | windows/amd64 단독 | 목적이 Windows PC 두 대다. 필요해지면 늘리기 쉽다 |
 | 설치 방식 | `herdr plugin install` + 소스 빌드 | Go가 있으므로 `install.ps1` 폴백이 불필요하다 |
@@ -70,19 +70,31 @@ git checkout windows-support && git merge main
 
 동작 순서:
 
-1. `internal/version/version.go`에서 base 버전을 읽는다. `0.1.20-win.3`처럼 이미
+1. `internal/version/version.go`에서 base 버전을 읽는다. `0.1.20-nightly.…`처럼 이미
    접미사가 붙어 있으면 `0.1.20` 부분만 취한다.
-2. `git tag`에서 `v<base>-win.*` 패턴을 세어 다음 N을 정한다. 없으면 1.
-3. `version.go`에 `<base>-win.<N>`을 써넣고 `[skip ci]`로 커밋·push한다.
-4. `v<base>-win.<N>` 태그를 만들어 push한다.
+2. 현재 시각으로 `<YYYYMMDD>-<HHMM>` 스탬프를 만든다. 타임존은 **Asia/Seoul**로
+   고정한다 — GitHub 러너는 UTC로 도는데, 이 스탬프는 사람이 "지금 어느 빌드를 쓰고
+   있나"를 읽는 용도라 쓰는 사람의 시간대가 맞다.
+3. `version.go`에 `<base>-nightly.<stamp>`를 써넣고 `[skip ci]`로 커밋·push한다.
+4. `v<base>-nightly.<stamp>` 태그를 만들어 push한다.
 5. `goreleaser release --clean --config .goreleaser.fork.yml`을 돌린다.
 
-base가 upstream 머지로 `0.1.21`이 되면 `v0.1.21-win.*` 태그가 아직 없으므로 카운터가
-자동으로 1부터 다시 시작한다. 카운터 상태를 별도 파일에 두지 않고 git 태그에서 유도하는
-방식이라, CI가 상태 파일을 커밋할 필요가 없다.
+base가 upstream 머지로 `0.1.21`이 되면 다음 릴리스부터 `v0.1.21-nightly.…`가 되어
+저절로 따라간다. 태그를 세거나 상태 파일을 두지 않고 시각에서 바로 유도하므로 CI가
+관리할 상태가 없다.
 
-`concurrency: group: release-fork`로 직렬화해 두 번의 push가 같은 번호를 다투지
-않게 한다.
+### 날짜 형식을 붙여 쓰는 이유
+
+herdr는 `2026.08.16-0612`처럼 점으로 끊어 쓰지만, 우리는 `20260817-0843`으로 붙여
+쓴다. semver 명세는 prerelease의 **순수 숫자 식별자에 leading zero를 금지**하는데,
+점으로 끊으면 `08`이 여기 걸린다. 붙여 쓰면 하이픈 때문에 식별자 전체가 영숫자로
+취급되어 문제가 사라진다. 태그를 파싱하는 것은 goreleaser이고, 거부당하면 릴리스가
+아예 나가지 않으므로 명세를 지키는 쪽을 택했다.
+
+부수 효과로 사전순 정렬이 시간순과 일치한다.
+
+`concurrency: group: release-fork`로 직렬화한다. 같은 분에 두 번 push하면 스탬프가
+겹치므로, 태그가 이미 있으면 잡을 실패시키지 말고 건너뛴다.
 
 ### `.goreleaser.fork.yml` (신규)
 
@@ -92,13 +104,14 @@ upstream 설정과 다른 점:
 - `brews:` 블록 **제거** — fork 토큰으로 `cloudmanic/herdr-plus`에 push할 수 없어,
   남겨두면 릴리스가 반드시 실패한다
 - 아카이브 포맷은 zip
-- `-win.N`이 semver prerelease이므로 goreleaser가 GitHub Release를 prerelease로
+- `-nightly.<stamp>`가 semver prerelease이므로 goreleaser가 GitHub Release를 prerelease로
   표시한다
 
 ## 3. 미확정 지점: 매니페스트의 prerelease 버전
 
-`herdr-plugin.toml`의 `version` 필드가 `0.1.20-win.3` 같은 prerelease 표기를
-받아주는지 확인되지 않았다. semver로 파싱한다면 유효하지만 검증 전에는 가정하지 않는다.
+`herdr-plugin.toml`의 `version` 필드가 `0.1.20-nightly.20260817-0843` 같은 prerelease
+표기를 받아주는지 확인되지 않았다. semver로 파싱한다면 유효하지만 검증 전에는 가정하지
+않는다.
 
 구현 3단계에서 `herdr plugin link`로 실측한 뒤 분기한다:
 
@@ -107,7 +120,8 @@ upstream 설정과 다른 점:
 - **거부** → 매니페스트는 base 버전(`0.1.20`)을 유지한다. 구분은
   `herdr-plus version` 출력과 git 태그로 한다.
 
-어느 쪽이든 `internal/version/version.go`에는 전체 버전(`0.1.20-win.3`)을 써넣는다.
+어느 쪽이든 `internal/version/version.go`에는 전체 버전
+(`0.1.20-nightly.20260817-0843`)을 써넣는다.
 두 PC를 오갈 때 지금 어느 빌드가 깔려 있는지 아는 것이 이 작업의 실질적 목적 중
 하나이기 때문이다.
 
@@ -155,7 +169,7 @@ Windows에서 `-race`는 cgo(gcc)를 요구한다. `windows-latest` 러너에는
 | 1 | `open_test.go` 픽스처 Windows 분기 | 로컬 `go test ./...` 전체 통과 |
 | 2 | `test.yml`에 `windows-latest` 추가 | CI 3개 OS 모두 통과 |
 | 3 | 매니페스트 prerelease 수용 여부 실측 | 3절의 분기 확정 |
-| 4 | `.goreleaser.fork.yml` + `release-fork.yml` | push로 `v0.1.20-win.1` 릴리스 생성 |
+| 4 | `.goreleaser.fork.yml` + `release-fork.yml` | push로 `v0.1.20-nightly.<stamp>` 릴리스 생성 |
 | 5 | 설치 실측 | `herdr plugin install ... --ref windows-support` 성공 |
 | 6 | README에 fork 설치 안내 | fork 전용 섹션 추가 |
 
