@@ -8,7 +8,7 @@ package main
 
 import (
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -62,13 +62,13 @@ func TestFindProject(t *testing.T) {
 // using a fake herdr located via HERDR_BIN_PATH so the test never needs a real one.
 func TestHerdrManagedConfigDir(t *testing.T) {
 	// Success: fake herdr prints a path with surrounding whitespace.
-	t.Setenv("HERDR_BIN_PATH", writeFakeHerdr(t, "#!/bin/sh\necho '  /managed/dir  '\n"))
+	t.Setenv("HERDR_BIN_PATH", installFakeHerdr(t, "  /managed/dir  \n", 0))
 	if got := herdrManagedConfigDir(); got != "/managed/dir" {
 		t.Fatalf("herdrManagedConfigDir = %q, want %q", got, "/managed/dir")
 	}
 
 	// Failure: fake herdr exits non-zero, so we get "".
-	t.Setenv("HERDR_BIN_PATH", writeFakeHerdr(t, "#!/bin/sh\nexit 1\n"))
+	t.Setenv("HERDR_BIN_PATH", installFakeHerdr(t, "", 1))
 	if got := herdrManagedConfigDir(); got != "" {
 		t.Fatalf("herdrManagedConfigDir on failure = %q, want empty", got)
 	}
@@ -78,7 +78,7 @@ func TestHerdrManagedConfigDir(t *testing.T) {
 // directory when HERDR_PLUGIN_CONFIG_DIR is unset, and leaves an already-set value
 // untouched (never consulting herdr in that case).
 func TestEnsureManagedConfigDir(t *testing.T) {
-	t.Setenv("HERDR_BIN_PATH", writeFakeHerdr(t, "#!/bin/sh\necho /queried/dir\n"))
+	t.Setenv("HERDR_BIN_PATH", installFakeHerdr(t, "/queried/dir\n", 0))
 
 	// Unset → the queried directory is exported.
 	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", "")
@@ -95,14 +95,21 @@ func TestEnsureManagedConfigDir(t *testing.T) {
 	}
 }
 
-// writeFakeHerdr writes an executable shell script that stands in for the herdr
-// binary and returns its path. The script ignores its arguments, so it serves any
-// `herdr ...` invocation the code under test makes.
-func writeFakeHerdr(t *testing.T, script string) string {
+// installFakeHerdr points the code under test at a stand-in herdr that prints
+// output and exits with exitCode, returning the path to use as HERDR_BIN_PATH.
+// The stand-in is this very test binary, re-executed with the fake-herdr
+// variables set (see TestMain); the child ignores its arguments, so it serves any
+// `herdr ...` invocation the code under test makes. t.Setenv unsets both
+// variables when the test ends.
+func installFakeHerdr(t *testing.T, output string, exitCode int) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "herdr")
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatalf("write fake herdr: %v", err)
+
+	t.Setenv(fakeHerdrOutputEnv, output)
+	t.Setenv(fakeHerdrExitEnv, strconv.Itoa(exitCode))
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("locate test binary: %v", err)
 	}
-	return path
+	return exe
 }
