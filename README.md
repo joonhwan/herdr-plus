@@ -57,6 +57,34 @@ The binary on its own doesn't register the plugin with herdr — use
 `herdr plugin install` (above) for that. Every merge to `main` cuts a new release
 with cross-compiled binaries.
 
+### This fork (joonhwan/herdr-plus)
+
+This fork tracks upstream and adds Windows-focused CI and a nightly release
+pipeline. Install it from the `windows-support` branch:
+
+```bash
+herdr plugin install joonhwan/herdr-plus --ref windows-support -y
+```
+
+herdr clones the branch and builds from source, so **Go must be on your `PATH`**.
+The `windows-support` branch also publishes nightly Windows binaries as GitHub
+prereleases, tagged `v<upstream-version>-nightly.<YYYYMMDD>-<HHMM>` — the
+upstream version stays in front so it is always clear what the build is based on.
+
+Check what you are running with:
+
+```bash
+herdr-plus version
+```
+
+To follow upstream, merge it in rather than pushing this fork's `main`:
+
+```bash
+git fetch upstream
+git checkout main && git merge --ff-only upstream/main
+git checkout windows-support && git merge main
+```
+
 ## Configuration
 
 herdr-plus keeps its config in herdr's managed plugin directory — find it with:
