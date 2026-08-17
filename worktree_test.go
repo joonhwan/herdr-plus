@@ -208,6 +208,11 @@ func TestMatchWorktreeLayoutWildcard(t *testing.T) {
 func TestLoadWorktreeLayouts(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
+	// Pin config to the temp XDG dir even if these tests run inside a herdr plugin
+	// context — herdr injects HERDR_PLUGIN_CONFIG_DIR into every pane it opens, and
+	// configBaseDir prefers it, so without this the test reads the developer's real
+	// worktree layouts. Mirrors projectsDirIn in project_test.go.
+	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", "")
 
 	// No worktrees directory yet → no layouts, no error.
 	got, err := loadWorktreeLayouts()
