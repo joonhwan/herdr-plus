@@ -116,7 +116,8 @@ branch_prefix = "your-name/" # used verbatim; include your own trailing /
 
 Pick a project from a full-screen fuzzy browser and herdr-plus builds its whole
 workspace. Trigger it from herdr's plugin action menu, or
-[bind a key](#binding-a-key) — the action is `cloudmanic.herdr-plus.projects`.
+[bind a key](#binding-a-key) — the action is `cloudmanic.herdr-plus.projects`
+(`...projects-windows` on Windows).
 Inside the browser, **Enter** opens the highlighted project as a normal workspace;
 **ctrl+g** opens it as a git worktree. The worktree prompt accepts an optional
 branch name: empty lets herdr generate `worktree/...`, bare names get the optional
@@ -211,7 +212,8 @@ A tab uses *either* `command` *or* `[[tabs.panes]]`, not both.
 ## Quick Actions
 
 A fuzzy launcher for one-off commands. Trigger it (action
-`cloudmanic.herdr-plus.quick-actions`), fuzzy-pick an action, and it runs in the
+`cloudmanic.herdr-plus.quick-actions`, or `...quick-actions-windows` on
+Windows), fuzzy-pick an action, and it runs in the
 directory you launched from. Actions are TOML files in the `quick-actions/` subdir
 of [herdr-plus's config dir](#configuration) (seeded with editable examples on
 first run). A repo can also ship its own in `<repo>/.herdr-plus/quick-actions/`, shown
@@ -365,8 +367,9 @@ and still override individual repos when needed.
 ## Binding a key
 
 Binding keys to the actions is an optional, one-time edit to **your** herdr
-`config.toml` (`~/.config/herdr/config.toml`). Add `[[keys.command]]` entries with
-`type = "plugin_action"` whose `command` is the action id:
+`config.toml` — `~/.config/herdr/config.toml`, or `%APPDATA%\herdr\config.toml`
+on Windows. Add `[[keys.command]]` entries with `type = "plugin_action"` whose
+`command` is the action id:
 
 ```toml
 [[keys.command]]
@@ -384,6 +387,20 @@ description = "herdr-plus: quick actions"
 
 Then `herdr server reload-config` (or restart herdr) and press your herdr prefix
 (default `ctrl+b`) followed by the bound key.
+
+> **On Windows, bind the `-windows` action ids instead** —
+> `cloudmanic.herdr-plus.projects-windows` and
+> `cloudmanic.herdr-plus.quick-actions-windows`. The ids above are declared
+> `platforms = ["linux", "macos"]`, so binding them on Windows fails with
+> `action ... does not support the current platform (windows)`.
+>
+> The split is forced by herdr, not a choice: an action carries exactly one
+> `command` and herdr rejects duplicate action ids regardless of `platforms`, so
+> the two OSes — which need genuinely different commands (see the comments in
+> [`herdr-plugin.toml`](herdr-plugin.toml)) — cannot share one id. A keybinding
+> matches its id exactly and does not fall back to a platform-appropriate twin.
+>
+> List what is actually registered with `herdr plugin action list`.
 
 ## Building
 

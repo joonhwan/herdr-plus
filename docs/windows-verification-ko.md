@@ -124,6 +124,55 @@ herdr 자신의 작업 디렉터리 기준으로** 찾기 때문에 `.\bin\herdr
 직접 띄우면 os error 3이 납니다. PATH에 있는 powershell을 한 단계 거치면
 powershell의 작업 디렉터리가 플러그인 루트라서 `&` 연산자가 제대로 찾아 줍니다.
 
+### 4.1.1 키바인딩은 `-windows` ID를 써야 합니다
+
+herdr `config.toml`(Windows에서는 `%APPDATA%\herdr\config.toml`)에 키를 묶을 때,
+**README 본문의 예제를 그대로 쓰면 Windows에서 실패합니다.**
+
+```toml
+# 안 됨 — unix 전용 액션 ID
+[[keys.command]]
+key = "prefix+up"
+type = "plugin_action"
+command = "cloudmanic.herdr-plus.projects"
+```
+
+```
+action 'cloudmanic.herdr-plus.projects' does not support the current platform (windows)
+```
+
+Windows에서는 `-windows`가 붙은 ID를 묶으세요.
+
+```toml
+[[keys.command]]
+key = "prefix+up"
+type = "plugin_action"
+command = "cloudmanic.herdr-plus.projects-windows"
+description = "herdr-plus: projects"
+
+[[keys.command]]
+key = "prefix+down"
+type = "plugin_action"
+command = "cloudmanic.herdr-plus.quick-actions-windows"
+description = "herdr-plus: quick actions"
+```
+
+고친 뒤 `herdr server reload-config`를 돌리면 됩니다.
+
+왜 이렇게 갈라지는지는 herdr 쪽 제약입니다. 액션 하나는 `command`를 딱 하나만
+가질 수 있고(`PluginManifestAction`), herdr는 **`platforms`가 서로 겹치지 않아도**
+중복 액션 ID를 거부합니다(`reject_duplicate_action_ids`). 그런데 두 OS는 실제로
+다른 명령이 필요하니(4.1절의 powershell 경유 이유), 하나의 ID를 나눠 쓸 방법이
+없습니다. 게다가 키바인딩 처리 경로(`invoke_plugin_action_from_keybind`)는 ID를
+정확히 일치시킨 뒤 플랫폼 검사를 하고 바로 에러를 냅니다 — OS에 맞는 twin으로
+알아서 넘어가 주지 않습니다.
+
+실제로 등록된 ID는 이걸로 확인하세요.
+
+```powershell
+herdr plugin action list
+```
+
 ### 4.2 Quick Actions
 
 ```powershell
@@ -285,6 +334,7 @@ herdr-plus: applied worktree layout "zz-specific.toml" to repo "myrepo" (branch 
 | `go test ./...` (herdr pane 안) | 검증됨 (설정 디렉터리 누수 수정 후) |
 | `go build` + `herdr plugin link .` | 검증됨 |
 | `ping` — action 진입점 | 검증됨 |
+| 키바인딩(`plugin_action`) — `-windows` ID | 검증됨 |
 | Quick Actions — picker 렌더링, 필터, Project/Global 그룹 | 검증됨 |
 | Quick Actions — `command` / `select` / `form` | 검증됨 |
 | Quick Actions — `[windows]` 명령 오버라이드 | 검증됨 |
@@ -308,6 +358,12 @@ herdr-plus: applied worktree layout "zz-specific.toml" to repo "myrepo" (branch 
 들어 있으면 명령이 깨집니다. 셸 인용용 템플릿 함수는 아직 없습니다.
 URL이라면 `{{.Value | urlquery}}`로 피할 수 있습니다.
 Windows 한정이 아니라 POSIX에서도 같습니다.
+
+**키바인딩을 OS 간에 공유할 수 없습니다.**
+액션 ID가 OS별로 갈리기 때문에, 여러 머신에서 herdr `config.toml`을 공유하고 있다면
+Windows에서는 `-windows` ID로, macOS/Linux에서는 기본 ID로 각각 써야 합니다.
+herdr 설정에 OS별 분기 문법이 있는지는 확인하지 않았습니다. 없다면 머신별로
+따로 두는 수밖에 없습니다. 자세한 배경은 [4.1.1절](#411-키바인딩은--windows-id를-써야-합니다)에 있습니다.
 
 **`make` 관련 타깃은 Windows에서 안 돕니다.**
 `Makefile`이 `mkdir -p` 같은 POSIX 명령을 씁니다. `make plugin-link` 대신
@@ -335,9 +391,9 @@ git이 Windows에서 CRLF로 체크아웃하기 때문입니다(36개 중 33개)
   `[worktree] branch_prefix` 설정.
 - **picker에서 마우스 클릭/휠 조작.** 키보드 조작만 확인했습니다.
 - **`select` 액션의 구분선/헤딩 옵션**(`label` 없는 항목).
-- **herdr 액션 메뉴가 OS별 진입점을 걸러 주는지.** `herdr plugin action list`는
-  unix용과 windows용을 둘 다 보여 줍니다. TUI 메뉴에서도 그대로 둘 다 보이는지,
-  아니면 herdr가 platform으로 걸러 주는지는 확인하지 않았습니다.
+- **herdr TUI의 액션 메뉴가 OS별 진입점을 걸러 주는지.** `herdr plugin action list`는
+  unix용과 windows용을 둘 다 보여 줍니다. TUI 메뉴에서도 그대로 둘 다 보이는지는
+  확인하지 않았습니다. (키바인딩 경로는 확인했습니다 — [4.1.1절](#411-키바인딩은--windows-id를-써야-합니다) 참고.)
 - **이번 변경의 macOS/Linux 동작.** 단위 테스트로 `renderFor(ctx, "linux")`가
   기본 명령을 쓰는 것까지만 확인했고, 실제 unix 환경에서 돌려 보지는 않았습니다.
 
