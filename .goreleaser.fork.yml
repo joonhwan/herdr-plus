@@ -1,0 +1,63 @@
+#
+# Date: 2026-08-17
+# Author: Joonhwan Lee (joonhwan.lee@mirero.co.kr)
+# Copyright: 2026 Cloudmanic Labs, LLC. All rights reserved.
+#
+# GoReleaser config for this fork's nightly Windows releases, driven by
+# .github/workflows/release-fork.yml on every push to windows-support.
+#
+# It is a separate file from .goreleaser.yml rather than an edit to it, and that
+# is the whole point: upstream owns .goreleaser.yml and changes it, so editing it
+# here would make every upstream merge a conflict. A new file never conflicts.
+#
+# Two differences from upstream's config matter:
+#
+#   1. No `brews:` block. Upstream pushes a Homebrew formula into
+#      cloudmanic/herdr-plus; this fork's GITHUB_TOKEN cannot write there, so
+#      keeping the block would fail every release. The fork ships no formula.
+#   2. Windows amd64 only — the two PCs this fork exists for.
+
+version: 2
+
+project_name: herdr-plus
+
+# No `before: hooks: [go mod tidy]`. Upstream runs it here; the Test workflow
+# already verifies tidiness on every push, and a tidy run that dirties the tree
+# mid-release would break the tag goreleaser just checked out.
+
+builds:
+  - id: herdr-plus
+    binary: herdr-plus
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos: [windows]
+    goarch: [amd64]
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # zip is the platform-native format, and it matches the archive name the
+    # upstream config produces for windows — so a future install script can treat
+    # both origins identically.
+    formats: [zip]
+    files:
+      - LICENSE*
+      - README*
+
+checksum:
+  name_template: "checksums.txt"
+
+# Nightly builds cut on every push; a generated changelog per build would be
+# noise, and the commit list is a click away on the release page.
+changelog:
+  disable: true
+
+release:
+  # Every version this pipeline produces carries a -nightly.… prerelease
+  # identifier, so `auto` always marks these as prereleases. That keeps them out
+  # of the "latest release" slot, which matters because upstream's real releases
+  # share this repo's fork network.
+  prerelease: auto
