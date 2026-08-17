@@ -107,23 +107,29 @@ upstream 설정과 다른 점:
 - `-nightly.<stamp>`가 semver prerelease이므로 goreleaser가 GitHub Release를 prerelease로
   표시한다
 
-## 3. 미확정 지점: 매니페스트의 prerelease 버전
+## 3. 매니페스트의 prerelease 버전
 
-`herdr-plugin.toml`의 `version` 필드가 `0.1.20-nightly.20260817-0843` 같은 prerelease
-표기를 받아주는지 확인되지 않았다. semver로 파싱한다면 유효하지만 검증 전에는 가정하지
-않는다.
+`herdr-plugin.toml`의 `version`에 `0.1.20-nightly.20260817-0937` 같은 semver
+prerelease를 넣어도 herdr 0.8.0-nightly.2026.08.16-0612가 그대로 받아준다. `relver
+-write -manifest`로 매니페스트를 스탬프한 뒤 `go build`로 빌드하고 `herdr plugin link
+.`를 실행했더니 링크 자체가 에러 없이 끝났고, `herdr plugin list --json`의
+`cloudmanic.herdr-plus` 항목에 `"version":"0.1.20-nightly.20260817-0937"`이 잘려 나가지
+않고 그대로 찍혔다. 링크가 성공했다는 사실만으로는 herdr가 필드를 실제로 파싱했는지
+알 수 없어서, `--json` 출력으로 값이 원본과 정확히 일치하는지까지 확인했다 (2026-08-17
+실측).
 
-구현 3단계에서 `herdr plugin link`로 실측한 뒤 분기한다:
+단, 사람이 보는 `herdr plugin list` 기본 출력에는 버전이 아예 나오지 않는다. 버전은
+`--json` 플래그를 붙여야 노출된다. 그래서 "정확한 빌드가 표시된다"는 것은 사람이 눈으로
+보는 목록이 아니라 JSON API 응답을 두고 하는 말이다.
 
-- **수용** → 매니페스트에도 전체 버전을 써서 `herdr plugin list`에 정확히 표시되게 한다.
-  `release-fork.yml`이 `version.go`와 매니페스트를 함께 갱신한다.
-- **거부** → 매니페스트는 base 버전(`0.1.20`)을 유지한다. 구분은
-  `herdr-plus version` 출력과 git 태그로 한다.
+따라서 `release-fork.yml`은 `relver -write -manifest`를 호출해 `version.go`와
+매니페스트를 함께 갱신한다. `internal/version/version.go`에는 어차피 전체 버전
+(`0.1.20-nightly.20260817-0937` 같은 값)을 써넣어야 하므로, 매니페스트도 같은 값으로
+맞추는 데 추가 비용이 들지 않는다. 두 PC를 오갈 때 지금 어느 빌드가 깔려 있는지 아는
+것이 이 작업의 실질적 목적 중 하나이기 때문이다.
 
-어느 쪽이든 `internal/version/version.go`에는 전체 버전
-(`0.1.20-nightly.20260817-0843`)을 써넣는다.
-두 PC를 오갈 때 지금 어느 빌드가 깔려 있는지 아는 것이 이 작업의 실질적 목적 중
-하나이기 때문이다.
+herdr를 0.8.x대에서 크게 올린 뒤에는(특히 메이저 버전이 바뀌면) 이 가정을 다시
+확인할 것 — 매니페스트 파서가 바뀌어 prerelease 처리 방식이 달라질 수 있다.
 
 ## 4. 설치 경로
 
