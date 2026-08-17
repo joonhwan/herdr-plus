@@ -7,7 +7,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -412,7 +414,29 @@ func runQuickActionsUI() {
 		runCtx := ctx
 		runCtx.Value = m.value
 		if err := m.chosen.run(runCtx); err != nil {
-			fmt.Fprintln(os.Stderr, "herdr-plus: action failed:", err)
+			reportActionFailure(os.Stderr, os.Stdin, err)
 		}
 	}
+}
+
+// reportActionFailure shows why a chosen action failed and holds the pane open
+// until the user acknowledges it.
+//
+// The wait is the whole point. Returning from runQuickActionsUI exits the
+// process, and herdr tears the picker's pane down the instant it does — so an
+// error merely printed here scrolls past in the same frame it is drawn. From the
+// user's side the picker just closes and nothing happens, which is exactly how a
+// POSIX-only command failing to parse under PowerShell presents. Blocking on a
+// read keeps the message on screen.
+//
+// Reading a line (rather than a raw key) keeps this free of terminal-mode
+// handling: bubbletea has already restored the cooked terminal by the time we get
+// here. EOF returns immediately, so a pane with no usable stdin does not hang.
+func reportActionFailure(out io.Writer, in io.Reader, err error) {
+	fmt.Fprintln(out, "herdr-plus: action failed:", err)
+	fmt.Fprint(out, "\n— press Enter to close —")
+
+	bufio.NewReader(in).ReadString('\n')
+
+	fmt.Fprintln(out)
 }

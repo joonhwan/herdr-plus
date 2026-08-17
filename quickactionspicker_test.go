@@ -7,7 +7,11 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -131,5 +135,44 @@ func TestPickerMouseWheelMoves(t *testing.T) {
 	}
 	if got := pm.actionList.selectedIndex(); got != 1 {
 		t.Fatalf("after wheel down selected ref = %d, want 1 (test)", got)
+	}
+}
+
+// TestReportActionFailureHoldsPane covers what the user sees when a chosen action
+// fails. herdr tears the picker's pane down the moment this process exits, so an
+// error printed on the way out is gone before it can be read — the symptom is a
+// picker that appears to close having done nothing. The failure path must print
+// the error and then block until the user acknowledges it.
+func TestReportActionFailureHoldsPane(t *testing.T) {
+	var out bytes.Buffer
+	in := strings.NewReader("\n")
+
+	reportActionFailure(&out, in, errors.New("exit status 1"))
+
+	got := out.String()
+	if !strings.Contains(got, "exit status 1") {
+		t.Errorf("output %q does not contain the underlying error", got)
+	}
+	if !strings.Contains(got, "Enter") {
+		t.Errorf("output %q does not tell the user how to dismiss it", got)
+	}
+}
+
+// TestReportActionFailureReturnsOnClosedInput makes sure a pane with no readable
+// input (a closed or empty stdin) does not hang forever waiting for a key that
+// can never arrive.
+func TestReportActionFailureReturnsOnClosedInput(t *testing.T) {
+	var out bytes.Buffer
+
+	done := make(chan struct{})
+	go func() {
+		reportActionFailure(&out, strings.NewReader(""), errors.New("boom"))
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("reportActionFailure blocked on input that will never arrive")
 	}
 }

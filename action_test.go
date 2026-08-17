@@ -140,3 +140,94 @@ func TestOptionResolvedValue(t *testing.T) {
 
 // Shell quoting is OS-specific and lives in shell_test.go (posixQuote /
 // powershellQuote are tested directly there, on every platform).
+
+// TestActionCommandFor covers the optional per-OS command override. An action
+// carries one portable `command` plus an optional [windows] block; a shell
+// command written for sh does not parse under PowerShell, so a Windows build
+// must be able to run a different string without forking the whole action file.
+func TestActionCommandFor(t *testing.T) {
+	posix := `make test; read -t 30 _ </dev/tty || true`
+	win := `make test; Read-Host "press Enter"`
+
+	cases := []struct {
+		name   string
+		action Action
+		goos   string
+		want   string
+	}{
+		{
+			name:   "windows build uses the override when present",
+			action: Action{Command: posix, Windows: OSCommand{Command: win}},
+			goos:   "windows",
+			want:   win,
+		},
+		{
+			name:   "non-windows build ignores the override",
+			action: Action{Command: posix, Windows: OSCommand{Command: win}},
+			goos:   "linux",
+			want:   posix,
+		},
+		{
+			name:   "windows build falls back when no override is given",
+			action: Action{Command: posix},
+			goos:   "windows",
+			want:   posix,
+		},
+		{
+			name:   "a blank override does not shadow the base command",
+			action: Action{Command: posix, Windows: OSCommand{Command: "   "}},
+			goos:   "windows",
+			want:   posix,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.action.commandFor(c.goos); got != c.want {
+				t.Errorf("commandFor(%q) = %q, want %q", c.goos, got, c.want)
+			}
+		})
+	}
+}
+
+// TestActionRenderUsesOSCommand makes sure the override is what actually gets
+// templated and run, not just what commandFor reports. Rendering the base
+// command on Windows is the exact bug this feature exists to prevent.
+func TestActionRenderUsesOSCommand(t *testing.T) {
+	a := Action{
+		Name:    "demo",
+		Command: "echo posix {{.Value}}",
+		Windows: OSCommand{Command: "Write-Output windows {{.Value}}"},
+	}
+
+	got, err := a.renderFor(RunContext{Value: "v"}, "windows")
+	if err != nil {
+		t.Fatalf("renderFor: %v", err)
+	}
+	if want := "Write-Output windows v"; got != want {
+		t.Errorf("renderFor(windows) = %q, want %q", got, want)
+	}
+}
+
+// TestActionRenderAutoAppendUsesOSCommand pins a subtle case: the auto-append of
+// an unreferenced value inspects the command string, and it must inspect the one
+// actually being run. An override that omits {{.Value}} should still get the
+// value appended even when the base command references it.
+func TestActionRenderAutoAppendUsesOSCommand(t *testing.T) {
+	a := Action{
+		Name:    "demo",
+		Command: "echo {{.Value}}",
+		Windows: OSCommand{Command: "Write-Output"},
+	}
+
+	got, err := a.renderFor(RunContext{Value: "hello there"}, "windows")
+	if err != nil {
+		t.Fatalf("renderFor: %v", err)
+	}
+	if !strings.Contains(got, "Write-Output ") {
+		t.Fatalf("renderFor(windows) = %q, want the windows command", got)
+	}
+	if !strings.Contains(got, "hello there") {
+		t.Errorf("renderFor(windows) = %q, want the value appended", got)
+	}
+}

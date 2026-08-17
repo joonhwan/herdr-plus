@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"text/template"
 )
@@ -80,6 +81,21 @@ const (
 	originProject
 )
 
+// OSCommand holds a per-OS override of an action's command. A quick action's
+// command is a shell command string, and the shell differs by platform: what
+// herdr-plus runs is `sh -c` on unix but PowerShell on Windows (see shell.go).
+// A command written for one does not merely behave differently under the other —
+// PowerShell rejects `<` and `||` outright, so a POSIX action fails to parse and
+// nothing runs at all.
+//
+// Rather than force a separate action file per platform, an action keeps its
+// portable command in Command and adds an optional [windows] block that replaces
+// it on a Windows build. The base command stays required, so an action always has
+// something to run and existing files keep working untouched.
+type OSCommand struct {
+	Command string `toml:"command"`
+}
+
 // FormConfig customizes the text field shown for a "form" action.
 type FormConfig struct {
 	// Prompt is the label rendered above the input field.
@@ -101,6 +117,9 @@ type Action struct {
 	Options     []Option   `toml:"options"`
 	Form        FormConfig `toml:"form"`
 
+	// Windows optionally replaces Command on a Windows build — see OSCommand.
+	Windows OSCommand `toml:"windows"`
+
 	// source is the file the action was loaded from, used only for error
 	// messages. It is not part of the on-disk format.
 	source string
@@ -117,6 +136,17 @@ func (a Action) effectiveType() string {
 		return TypeCommand
 	}
 	return a.Type
+}
+
+// commandFor returns the command string to run on the named GOOS: the [windows]
+// override on a Windows build when it holds something, and the base command
+// everywhere else. A blank override is treated as absent so an empty block never
+// silently leaves an action with nothing to run.
+func (a Action) commandFor(goos string) string {
+	if goos == "windows" && strings.TrimSpace(a.Windows.Command) != "" {
+		return a.Windows.Command
+	}
+	return a.Command
 }
 
 // validate checks that an action is internally consistent before we ever try to
@@ -154,7 +184,17 @@ func (a Action) validate() error {
 // position the value precisely with {{.Value}} or just receive it as its last
 // argument.
 func (a Action) render(ctx RunContext) (string, error) {
-	tmpl, err := template.New(a.Name).Funcs(templateFuncs()).Parse(a.Command)
+	return a.renderFor(ctx, runtime.GOOS)
+}
+
+// renderFor is render against an explicit GOOS, so the per-OS command override
+// is testable without cross-compiling. Every string it looks at — the template it
+// parses and the one it checks for .Value — comes from commandFor, so the
+// auto-append decision is made about the command actually being run.
+func (a Action) renderFor(ctx RunContext, goos string) (string, error) {
+	command := a.commandFor(goos)
+
+	tmpl, err := template.New(a.Name).Funcs(templateFuncs()).Parse(command)
 	if err != nil {
 		return "", fmt.Errorf("parse command for %q: %w", a.Name, err)
 	}
@@ -165,7 +205,7 @@ func (a Action) render(ctx RunContext) (string, error) {
 	}
 	cmdline := buf.String()
 
-	if ctx.Value != "" && !strings.Contains(a.Command, ".Value") {
+	if ctx.Value != "" && !strings.Contains(command, ".Value") {
 		cmdline += " " + shellQuote(ctx.Value)
 	}
 	return cmdline, nil

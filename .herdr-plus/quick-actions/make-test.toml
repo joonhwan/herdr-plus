@@ -11,7 +11,16 @@
 #   sleep 5                     # simplest: just linger N seconds, then close
 #
 # The `|| true` keeps a read timeout (or a missing tty) from looking like an error.
+#
+# A failing command is a separate case and needs none of this: herdr-plus prints
+# the error and holds the pane until you press Enter.
 
 name = "make test"
 description = "Run the herdr-plus test suite (make test)"
 command = 'make test; printf "\n— done · press Enter to close (auto-closes in 30s) —\n"; read -t 30 _ </dev/tty || true'
+
+# See make-build.toml for why Windows needs its own command. On PowerShell the
+# keep-open wait is `Start-Sleep`, since stdin is /dev/null and there is no
+# /dev/tty to read from.
+[windows]
+command = 'go test ./...; Write-Host "`n— done · closing in 15s —"; Start-Sleep -Seconds 15'

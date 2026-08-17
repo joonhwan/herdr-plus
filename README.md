@@ -77,6 +77,11 @@ Check what you are running with:
 herdr-plus version
 ```
 
+For building this fork from a checkout and verifying it against a live herdr on
+Windows — including which commands actually work there and what is still
+unverified — see [docs/windows-verification-ko.md](docs/windows-verification-ko.md)
+(Korean).
+
 To follow upstream, merge it in rather than pushing this fork's `main`:
 
 ```bash
@@ -91,7 +96,8 @@ herdr-plus keeps its config in herdr's managed plugin directory — find it with
 
 ```bash
 herdr plugin config-dir cloudmanic.herdr-plus
-# → ~/.config/herdr/plugins/config/cloudmanic.herdr-plus
+# macOS/Linux → ~/.config/herdr/plugins/config/cloudmanic.herdr-plus
+# Windows     → %APPDATA%\herdr\plugins\config\cloudmanic.herdr-plus
 ```
 
 Inside it, `projects/` holds your [project templates](#projects) and
@@ -247,6 +253,33 @@ the launch context: `{{.WorkDir}}` (where you launched from), `{{.SessionTitle}}
 as `HERDR_PLUS_*` environment variables. If a command doesn't reference
 `{{.Value}}`, the value is appended as a final shell-quoted argument.
 
+### Per-OS commands
+
+A command is a shell command string, and the shell differs by platform: actions
+run under `sh -c` on macOS/Linux but PowerShell on Windows. PowerShell reserves
+`<` and rejects `||` as a statement separator, so a POSIX command doesn't just
+behave differently there — it fails to parse and nothing runs.
+
+An optional `[windows]` block replaces `command` on Windows. The base `command`
+stays required, so existing action files keep working unchanged:
+
+```toml
+name = "make test"
+command = 'make test; read -t 30 _ </dev/tty || true'
+
+[windows]
+command = 'go test ./...; Write-Host "`n— done —"; Start-Sleep -Seconds 15'
+```
+
+Use `{{opener}}` rather than a hardcoded `open` when all you need is the OS's
+default handler — it expands to `open`, `xdg-open`, or `Start-Process`, so one
+command works everywhere and needs no override.
+
+Note that an action's stdin is `/dev/null`. That's why the unix example waits on
+`</dev/tty`, and why the Windows one uses `Start-Sleep` instead of `Read-Host`
+(which would see EOF and return immediately). A *failing* action needs none of
+this: herdr-plus prints the error and holds the pane open until you press Enter.
+
 ## Worktree auto-layout
 
 herdr-plus can lay a project-style tab layout into a git **worktree** the moment
@@ -258,8 +291,8 @@ worktree's repo, and opens that layout's tabs and panes in the new workspace —
 every command running — with no keypress. This is the plugin system's `[[events]]`
 hook (declared in [`herdr-plugin.toml`](herdr-plugin.toml)) put to work.
 
-Layouts live in `~/.config/herdr-plus/worktrees/`, one TOML file per layout (the
-file name doesn't matter). A layout is a `repo` matcher plus the same `[[tabs]]`
+Layouts live in `worktrees/` inside [herdr-plus's config dir](#configuration),
+one TOML file per layout (the file name doesn't matter). A layout is a `repo` matcher plus the same `[[tabs]]`
 format projects use:
 
 ```toml

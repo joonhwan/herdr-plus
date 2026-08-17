@@ -1,7 +1,7 @@
 # A project-local quick action. Files under .herdr-plus/quick-actions/ in a repo
 # show up in the quick-actions picker — grouped under a "Project" heading — but
 # only when you launch herdr-plus from inside that repo. They use the exact same
-# format as your global actions in ~/.config/herdr-plus/quick-actions/.
+# format as your global actions in your herdr-plus config dir.
 #
 # The command runs in the directory you launched from (the repo root here, where
 # the Makefile lives).
@@ -13,3 +13,18 @@
 name = "make build"
 description = "Build the herdr-plus binary (make build)"
 command = 'make build; printf "\n— done · press Enter to close (auto-closes in 30s) —\n"; read -t 30 _ </dev/tty || true'
+
+# The [windows] block replaces `command` on a Windows build, where quick actions
+# run under PowerShell instead of sh. Two things force an override here:
+#
+#   1. Syntax. PowerShell reserves `<` and rejects `||` as a statement separator,
+#      so the command above does not merely behave differently — it fails to
+#      parse, and nothing runs at all.
+#   2. This repo's Makefile is POSIX-only (`mkdir -p`), so the Windows path calls
+#      the Go toolchain directly.
+#
+# Keep-open is a plain sleep rather than a read: an action's stdin is /dev/null
+# (that is why the unix command reaches for /dev/tty), so PowerShell's Read-Host
+# would see EOF and return immediately.
+[windows]
+command = 'go build -o bin/herdr-plus.exe .; Write-Host "`n— done · closing in 15s —"; Start-Sleep -Seconds 15'
